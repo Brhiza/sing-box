@@ -34,13 +34,17 @@ warn() {
 # root
 [[ $EUID != 0 ]] && err "当前非 ${yellow}ROOT用户.${none}"
 
-# yum or apt-get, ubuntu/debian/centos
-cmd=$(type -P apt-get || type -P yum)
-[[ ! $cmd ]] && err "此脚本仅支持 ${yellow}(Ubuntu or Debian or CentOS)${none}."
+# yum or apt-get, ubuntu/debian/centos/alpine
+cmd=$(type -P apt-get || type -P yum || type -P apk)
+[[ ! $cmd ]] && err "此脚本仅支持 ${yellow}(Ubuntu or Debian or CentOS or Alpine)${none}."
 
 # systemd
 [[ ! $(type -P systemctl) ]] && {
-    err "此系统缺少 ${yellow}(systemctl)${none}, 请尝试执行:${yellow} ${cmd} update -y;${cmd} install systemd -y ${none}来修复此错误."
+    if [[ $cmd =~ apk ]]; then
+        err "此系统缺少 ${yellow}(systemctl)${none}, 请尝试执行:${yellow} ${cmd} update;${cmd} add openrc ${none}来修复此错误."
+    else
+        err "此系统缺少 ${yellow}(systemctl)${none}, 请尝试执行:${yellow} ${cmd} update -y;${cmd} install systemd -y ${none}来修复此错误."
+    fi
 }
 
 # wget installed or none
@@ -70,6 +74,11 @@ is_sh_bin=/usr/local/bin/$is_core
 is_sh_dir=$is_core_dir/sh
 is_sh_repo=$author/$is_core
 is_pkg="wget tar"
+# Check if we're using Alpine Linux (using OpenRC)
+if [[ $(type -P apk) ]]; then
+    # Alpine Linux uses different package names
+    is_pkg="wget tar"
+fi
 is_config_json=$is_core_dir/config.json
 tmp_var_lists=(
     tmpcore
@@ -141,15 +150,20 @@ install_pkg() {
     if [[ $cmd_not_found ]]; then
         pkg=$(echo $cmd_not_found | sed 's/,/ /g')
         msg warn "安装依赖包 >${pkg}"
-        $cmd install -y $pkg &>/dev/null
-        if [[ $? != 0 ]]; then
-            [[ $cmd =~ yum ]] && yum install epel-release -y &>/dev/null
-            $cmd update -y &>/dev/null
-            $cmd install -y $pkg &>/dev/null
-            [[ $? == 0 ]] && >$is_pkg_ok
+        if [[ $cmd =~ apk ]]; then
+            # Alpine Linux
+            apk update &>/dev/null
+            apk add $pkg &>/dev/null
         else
-            >$is_pkg_ok
+            # Ubuntu/Debian/CentOS
+            $cmd install -y $pkg &>/dev/null
+            if [[ $? != 0 ]]; then
+                [[ $cmd =~ yum ]] && yum install epel-release -y &>/dev/null
+                $cmd update -y &>/dev/null
+                $cmd install -y $pkg &>/dev/null
+            fi
         fi
+        [[ $? == 0 ]] && >$is_pkg_ok
     else
         >$is_pkg_ok
     fi
@@ -198,7 +212,11 @@ check_status() {
     # dependent pkg install fail
     [[ ! -f $is_pkg_ok ]] && {
         msg err "安装依赖包失败"
-        msg err "请尝试手动安装依赖包: $cmd update -y; $cmd install -y $pkg"
+        if [[ $cmd =~ apk ]]; then
+            msg err "请尝试手动安装依赖包: $cmd update; $cmd add $pkg"
+        else
+            msg err "请尝试手动安装依赖包: $cmd update -y; $cmd install -y $pkg"
+        fi
         is_fail=1
     }
 

@@ -195,7 +195,11 @@ is_port_used() {
     fi
     is_cant_test_port=1
     msg "$is_warn 无法检测端口是否可用."
-    msg "请执行: $(_yellow "${cmd} update -y; ${cmd} install net-tools -y") 来修复此问题."
+    if [[ $cmd =~ apk ]]; then
+        msg "请执行: $(_yellow "${cmd} update; ${cmd} add net-tools") 来修复此问题."
+    else
+        msg "请执行: $(_yellow "${cmd} update -y; ${cmd} install net-tools -y") 来修复此问题."
+    fi
 }
 
 # ask input a string or pick a option for list.
@@ -679,13 +683,27 @@ uninstall() {
     fi
     manage stop &>/dev/null
     manage disable &>/dev/null
-    rm -rf $is_core_dir $is_log_dir $is_sh_bin ${is_sh_bin/$is_core/sb} /lib/systemd/system/$is_core.service
+    # Check if we're using Alpine Linux (using OpenRC)
+    if [[ $(type -P apk) ]]; then
+        rm -f /etc/init.d/$is_core
+        rc-update del $is_core default
+    else
+        rm -f /lib/systemd/system/$is_core.service
+    fi
+    rm -rf $is_core_dir $is_log_dir $is_sh_bin ${is_sh_bin/$is_core/sb}
     sed -i "/alias $is_core=/d" /root/.bashrc
     # uninstall caddy; 2 is ask result
     if [[ $REPLY == '2' ]]; then
         manage stop caddy &>/dev/null
         manage disable caddy &>/dev/null
-        rm -rf $is_caddy_dir $is_caddy_bin /lib/systemd/system/caddy.service
+        # Check if we're using Alpine Linux (using OpenRC)
+        if [[ $(type -P apk) ]]; then
+            rm -f /etc/init.d/caddy
+            rc-update del caddy default
+        else
+            rm -f /lib/systemd/system/caddy.service
+        fi
+        rm -rf $is_caddy_dir $is_caddy_bin
     fi
     [[ $is_install_sh ]] && return # reinstall
     _green "\n卸载完成!"
@@ -728,7 +746,27 @@ manage() {
         is_do_name_msg=$is_core_name
         ;;
     esac
-    systemctl $is_do $is_do_name
+    # Check if we're using Alpine Linux (using OpenRC)
+    if [[ $(type -P apk) ]]; then
+        # Alpine Linux with OpenRC
+        case $is_do in
+            start)
+                rc-service $is_do_name start
+                ;;
+            stop)
+                rc-service $is_do_name stop
+                ;;
+            restart)
+                rc-service $is_do_name restart
+                ;;
+            *)
+                rc-service $is_do_name $is_do
+                ;;
+        esac
+    else
+        # Systemd-based systems
+        systemctl $is_do $is_do_name
+    fi
     [[ $is_test_run && ! $is_new_install ]] && {
         sleep 2
         if [[ ! $(pgrep -f $is_run_bin) ]]; then
@@ -1228,11 +1266,22 @@ get() {
         bash <<<$is_install_sh
         ;;
     test-run)
-        systemctl list-units --full -all &>/dev/null
-        [[ $? != 0 ]] && {
-            _yellow "\n无法执行测试, 请检查 systemctl 状态.\n"
-            return
-        }
+        # Check if we're using Alpine Linux (using OpenRC)
+        if [[ $(type -P apk) ]]; then
+            # Alpine Linux with OpenRC
+            rc-status --all &>/dev/null
+            [[ $? != 0 ]] && {
+                _yellow "\n无法执行测试, 请检查 OpenRC 状态.\n"
+                return
+            }
+        else
+            # Systemd-based systems
+            systemctl list-units --full -all &>/dev/null
+            [[ $? != 0 ]] && {
+                _yellow "\n无法执行测试, 请检查 systemctl 状态.\n"
+                return
+            }
+        fi
         is_no_manage_msg=1
         if [[ ! $(pgrep -f $is_core_bin) ]]; then
             _yellow "\n测试运行 $is_core_name ..\n"
@@ -1424,7 +1473,11 @@ url_qr() {
             if [[ $(type -P qrencode) ]]; then
                 qrencode -t ANSI "${is_url}"
             else
-                msg "请安装 qrencode: $(_green "$cmd update -y; $cmd install qrencode -y")"
+                if [[ $cmd =~ apk ]]; then
+                    msg "请安装 qrencode: $(_green "$cmd update; $cmd add qrencode")"
+                else
+                    msg "请安装 qrencode: $(_green "$cmd update -y; $cmd install qrencode -y")"
+                fi
             fi
             msg
             msg "如果无法正常显示或识别, 请使用下面的链接来生成二维码:"

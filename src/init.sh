@@ -58,8 +58,8 @@ _wget() {
     wget --no-check-certificate "$@"
 }
 
-# yum or apt-get
-cmd=$(type -P apt-get || type -P yum)
+# yum or apt-get or apk
+cmd=$(type -P apt-get || type -P yum || type -P apk)
 
 # x64
 case $(arch) in
@@ -85,6 +85,11 @@ is_sh_bin=/usr/local/bin/$is_core
 is_sh_dir=$is_core_dir/sh
 is_sh_repo=$author/$is_core
 is_pkg="wget unzip tar qrencode"
+# Check if we're using Alpine Linux (using OpenRC)
+if [[ $(type -P apk) ]]; then
+    # Alpine Linux uses different package names
+    is_pkg="wget tar qrencode"
+fi
 is_config_json=$is_core_dir/config.json
 is_caddy_bin=/usr/local/bin/caddy
 is_caddy_dir=/etc/caddy

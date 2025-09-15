@@ -2,6 +2,12 @@
 
 最好用的 sing-box 一键安装脚本 & 管理脚本
 
+# 系统要求
+
+- **Ubuntu** 16.04+ / **Debian** 9+ / **CentOS** 7+ / **Alpine** 3.12+
+- **Root** 权限
+- **系统** 支持 `systemd` (Alpine 使用 `OpenRC`)
+
 # 特点
 
 - 快速安装
@@ -12,6 +18,7 @@
 - 兼容 sing-box 命令
 - 强大的快捷参数
 - 支持所有常用协议
+- 支持 Alpine Linux (OpenRC)
 - 一键添加 VLESS-REALITY (默认)
 - 一键添加 TUIC
 - 一键添加 Trojan
